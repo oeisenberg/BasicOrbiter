@@ -1,0 +1,321 @@
+<html>
+  <head>
+    <title>CM20219 – Coursework 2 – WebGL</title>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0"
+    />
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      canvas {
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <script src="three.js"></script>
+    <script src="dat.gui.js"></script>
+    <script src="OBJLoader.js"></script>
+    <script>
+      "use strict"; // https://stackoverflow.com/q/1335851/72470
+
+      // Global variables that are available in all functions.
+      var textureCube,
+        doneFlag,
+        controls,
+        blackHole,
+        cubeMaterial,
+        cubeMesh,
+        camera,
+        scene,
+        sceneCube,
+        renderer,
+        sun,
+        planet1Pivot,
+        pauseFlag,
+        planet1,
+        planet2,
+        moon,
+		speed,
+		planet1BB,
+		planet2BB,
+		moonBB;
+      var pivot = new THREE.Object3D();
+      var update = false;
+      speed = 0.01;
+
+      // Initialise the scene, and draw it for the first time.
+      init();
+      setUpSkyBox();
+      drawSun();
+      drawplanet1Pivot();
+      addSpotLight();
+      drawPlanet1();
+      drawMoon();
+      drawPlanet2();
+
+      animate();
+
+      THREE.SceneUtils.attach(planet1, scene, sun);
+      THREE.SceneUtils.attach(planet1, scene, planet1Pivot);
+      THREE.SceneUtils.attach(planet2, scene, sun);
+      THREE.SceneUtils.attach(moon, scene, planet1);
+      planet1.position.x = -3.5;
+      planet2.position.x = 2;
+      moon.position.x = 0.5;
+
+      // Scene initialisation. This function is only run once, at the very beginning.
+      function init() {
+        scene = new THREE.Scene();
+        //scene.fog = new THREE.Fog("black", 12, 20);
+
+        //whether the rotation should be stopped
+        pauseFlag = false;
+
+        // Set up the camera, move it to (6, 8, 10) and look at the origin (0, 0, 0).
+        camera = new THREE.PerspectiveCamera(
+          45,
+          window.innerWidth / window.innerHeight,
+          0.1,
+          1000
+        );
+        camera.position.set(6, 8, 10);
+        camera.lookAt(new THREE.Vector3(0, 0, 0));
+
+        // Listen for keyboard events, to react to them.
+        document.addEventListener("keydown", handleKeyDown);
+
+        var ambientLight = new THREE.AmbientLight("black", 0.6);
+        scene.add(ambientLight);
+        var ambientLight = new THREE.AmbientLight("yellow", 0.3);
+        scene.add(ambientLight);
+
+        // Set up the Web GL renderer.
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.autoClear = false;
+        renderer.setPixelRatio(window.devicePixelRatio); // HiDPI/retinxyza rendering
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setFaceCulling(THREE.CullFaceNone);
+        document.body.appendChild(renderer.domElement);
+
+        // Handle resizing of the browser window.
+        window.addEventListener("resize", handleResize, false);
+      }
+
+      window.onload = function () {
+        var gui = new dat.GUI();
+        //var folderTextures = gui.addFolder('Textures');
+        var folderVisibility = gui.addFolder("Visibility");
+        var folderDistances = gui.addFolder("Distances");
+
+        controls = new controller();
+
+        gui.add(controls, "Speed", 0, 10);
+        folderDistances.add(controls, "ChangePlanet1", 3, 5);
+        folderDistances.add(controls, "ChangePlanet2", 1.5, 2.5);
+
+        folderVisibility.add(controls, "planet1");
+        folderVisibility.add(controls, "planet2");
+
+        folderVisibility.open();
+      };
+
+      var controller = function () {
+        this.Speed = 1;
+        this.commet = false;
+        this.planet1 = true;
+        this.planet2 = true;
+        this.ChangePlanet1 = 4;
+        this.ChangePlanet2 = 2.5;
+        doneFlag = true;
+      };
+
+      function setUpSkyBox() {
+        var r = "images/";
+
+        var geometry = new THREE.BoxGeometry(15, 15, 15);
+        var material;
+        var cube = new THREE.Mesh(geometry, material);
+
+        var material1 = new THREE.MeshBasicMaterial({
+          map: THREE.ImageUtils.loadTexture(r + "posx.jpg"),
+          side: THREE.BackSide,
+        });
+        var material2 = new THREE.MeshBasicMaterial({
+          map: THREE.ImageUtils.loadTexture(r + "negx.jpg"),
+          side: THREE.BackSide,
+        });
+        var material3 = new THREE.MeshBasicMaterial({
+          map: THREE.ImageUtils.loadTexture(r + "posy.jpg"),
+          side: THREE.BackSide,
+        });
+        var material4 = new THREE.MeshBasicMaterial({
+          map: THREE.ImageUtils.loadTexture(r + "negy.jpg"),
+          side: THREE.BackSide,
+        });
+        var material5 = new THREE.MeshBasicMaterial({
+          map: THREE.ImageUtils.loadTexture(r + "posz.jpg"),
+          side: THREE.BackSide,
+        });
+        var material6 = new THREE.MeshBasicMaterial({
+          map: THREE.ImageUtils.loadTexture(r + "negz.jpg"),
+          side: THREE.BackSide,
+        });
+
+        var materials = [
+          material1,
+          material2,
+          material3,
+          material4,
+          material5,
+          material6,
+        ];
+
+        var meshFaceMaterial = new THREE.MeshFaceMaterial(materials);
+
+        cube = new THREE.Mesh(geometry, meshFaceMaterial);
+        cube.lookAt(camera.position);
+        camera.position.set(6, 8, 10);
+        scene.add(cube);
+      }
+
+      function addSpotLight() {
+        var spotLight = new THREE.SpotLight(0xffffff, 0.5);
+        spotLight.position.set(0, -100, -50);
+        spotLight.castShadow = true;
+        scene.add(spotLight);
+
+        var spotLight = new THREE.SpotLight(0xffffff, 0.5);
+        spotLight.position.set(0, 100, 50);
+        spotLight.castShadow = true;
+        scene.add(spotLight);
+      }
+
+      function rotate() {
+        var increaseP1 = 1;
+        var increaseP2 = 1;
+        if (!doneFlag) {
+          speed = 0.01;
+        } else {
+          speed = controls.Speed;
+          increaseP1 = 2 * Math.PI * (controls.ChangePlanet1 / 10);
+          increaseP2 = 2 * Math.PI * (controls.ChangePlanet2 / 10);
+        }
+        speed = speed / 100;
+        sun.rotation.y += speed * increaseP2;
+        planet1Pivot.rotation.y += speed * increaseP1;
+        planet1.rotation.y += speed;
+      }
+
+      function drawSun() {
+        var geometry = new THREE.SphereGeometry(0.9, 25, 25);
+        var material = new THREE.MeshLambertMaterial({
+          color: "yellow",
+          transparent: true,
+        });
+        sun = new THREE.Mesh(geometry, material);
+
+        scene.add(sun);
+      }
+
+      function drawplanet1Pivot() {
+        var geometry = new THREE.SphereGeometry(0.1, 25, 25);
+        var material = new THREE.MeshLambertMaterial({
+          color: "yellow",
+          transparent: true,
+        });
+        planet1Pivot = new THREE.Mesh(geometry, material);
+
+        scene.add(planet1Pivot);
+      }
+
+      function drawPlanet1() {
+        var geometry = new THREE.SphereGeometry(0.15, 25, 25);
+        var material = new THREE.MeshLambertMaterial({ color: "green" });
+        planet1 = new THREE.Mesh(geometry, material);
+
+        scene.add(planet1);
+      }
+
+      function drawPlanet2() {
+        var geometry = new THREE.SphereGeometry(0.1, 25, 25);
+        var material = new THREE.MeshLambertMaterial({ color: "red" });
+        planet2 = new THREE.Mesh(geometry, material);
+        scene.add(planet2);
+      }
+
+      function drawMoon() {
+        var geometry = new THREE.SphereGeometry(0.09, 25, 25);
+        var material = new THREE.MeshLambertMaterial({ color: "indigo" });
+        moon = new THREE.Mesh(geometry, material);
+        moon.castShadow = true;
+        moonBB = new THREE.Box3().setFromObject(moon);
+        scene.add(moon);
+      }
+
+      // Handle resizing of the browser window.
+      function handleResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      // Animation loop function. This function is called whenever an update is required.
+      function animate() {
+        requestAnimationFrame(animate);
+        rotate();
+        if (doneFlag) {
+          if (controls.planet1) {
+            planet1.visible = true;
+          } else {
+            planet1.visible = false;
+          }
+          if (controls.planet2) {
+            planet2.visible = true;
+          } else {
+            planet2.visible = false;
+          }
+          planet1.position.x = controls.ChangePlanet1;
+          planet2.position.x = controls.ChangePlanet2;
+        }
+
+        // Render the current scene to the screen.
+        renderer.render(scene, camera);
+      }
+
+      // Handle keyboard presses.
+      function handleKeyDown(event) {
+        switch (event.keyCode) {
+          case 37: //<- move camera left
+            camera.translateX(-0.1);
+            break;
+
+          case 38: //^  move camera forwards
+            camera.translateZ(-0.1);
+            break;
+
+          case 39: //-> move camera right
+            camera.translateX(0.1);
+            break;
+
+          case 40: // \/ move camera back
+            camera.translateZ(0.1);
+            break;
+
+          case 88: //x = move the camera up
+            camera.translateY(0.1);
+            break;
+
+          case 90: //z = move the camera down
+            camera.translateY(-0.1);
+            break;
+        }
+      }
+    </script>
+  </body>
+</html>
